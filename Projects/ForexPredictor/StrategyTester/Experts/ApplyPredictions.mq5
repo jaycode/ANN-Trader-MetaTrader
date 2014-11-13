@@ -14,7 +14,7 @@ input double lower_threshold = 10;
 //+------------------------------------------------------------------+
 //| Include                                                          |
 //+------------------------------------------------------------------+
-#include "..\Includes\ForexPredictor_nn\Experts\ForexPredictorBenchmarkY.mqh"
+#include "..\Includes\ForexPredictorBenchmarkY.mqh"
 
 ForexPredictorBenchmarkY fp_ea();
 

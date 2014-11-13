@@ -9,6 +9,7 @@
 #property version   "1.00"
 
 #property script_show_inputs
+#include "../Includes/Exporters.mqh"
 //+------------------------------------------------------------------+
 // x = input
 // y = output
@@ -75,12 +76,22 @@ void OnStart()
      {
       // Write the heading of data
       
-      string row="EMA3/EMA30, EMA15/EMA60, Close/Highest Close 200, Lowest Close 200 / Close, SMA3/SMA15, ATR3/ATR15, ADX3, ADX15, StochK3, StochK15, RSI3, RSI15, MACD";
+      // Highest Price Ratio
+      // hpr200 = Close/Highest Close 200
+      // Lowest Price Ratio
+      // lpr200 = Lowest Close 200 / Close
+      string row="time, ema3ema30, ema15ema60, " +
+      "hpr200, lpr200, " + 
+      "sma3sma15, atr3atr15, " + 
+      "adx3, adx15, stochk3, stochk15, rsi3, rsi15, macd";
       FileWrite(file_training_x, row);
       FileWrite(file_crossvalidation_x, row);
       FileWrite(file_testing_x, row);
       
-      string row_y = "Signal, Bid (sell price), Ask (buy price), Max Close in "+(Export_NextTickToGuess* PeriodSeconds(Export_Period)/3600)+" Hour(s), Target, Time";
+      // Bid - we sell price
+      // Ask - we buy price
+      string row_y = "time, signal, bids, asks, " +
+      "maxclose"+(Export_NextTickToGuess* PeriodSeconds(Export_Period)/3600)+"h, target";
       FileWrite(file_training_y, row_y);
       FileWrite(file_crossvalidation_y, row_y);
       FileWrite(file_testing_y, row_y);
@@ -131,7 +142,7 @@ void OnStart()
             count_y_buy++;
             counter++;
             write = true;
-            row_y = "1, "+(rates[bar].close)+", "+(rates[bar].close+rates[bar].spread*0.00001)+", "+max_close+", "+target+", "+rates[bar].time;
+            row_y = (long)rates[bar].time + ", 1, "+(rates[bar].close)+", "+(rates[bar].close+rates[bar].spread*0.00001)+", "+max_close+", "+target;
             row = SetupX(bar);
             if (count_y_buy < Export_Bars_CrossValidation) {
                FileWrite(file_crossvalidation_x, row);
@@ -151,7 +162,7 @@ void OnStart()
             counter++;
             write = true;
             
-            row_y = "0, "+(rates[bar].close)+", "+(rates[bar].close+rates[bar].spread*0.00001)+", "+max_close+", "+target+", "+rates[bar].time;
+            row_y = (long)rates[bar].time + ", 0, "+(rates[bar].close)+", "+(rates[bar].close+rates[bar].spread*0.00001)+", "+max_close+", "+target;
             row = SetupX(bar);
             if (count_y_sell < Export_Bars_CrossValidation) {
                FileWrite(file_crossvalidation_x, row);
@@ -192,7 +203,7 @@ string SetupX(int bar)
       if (rates[i].close < lowest_close) lowest_close = rates[i].close;
    }
    
-   return (ema3[bar]/ema30[bar])+", "
+   return (long)rates[bar].time + ", " + (ema3[bar]/ema30[bar])+", "
          +(ema15[bar]/ema60[bar])+", "
          +(rates[bar].close/highest_close)+", "
          +(lowest_close/rates[bar].close)+", "
@@ -206,171 +217,5 @@ string SetupX(int bar)
          +(rsi15[bar])+", "
          +(macd[bar])
          ;
-}
-
-double CalculateTarget(MqlRates& rates[], int current_pos, int pos_to_guess, double& final_max_close)
-{
-   double max_close = 0;
-   double dbl_spread = 0;
-   for (int i = current_pos-1; i > current_pos-pos_to_guess; i--) {
-      if (rates[i].close > max_close) max_close = rates[i].close;
-   }
-   final_max_close = max_close;
-   
-   dbl_spread = rates[current_pos].spread * 0.00001;
-   double target = ((max_close - (rates[current_pos].close + dbl_spread)) / rates[current_pos].close) * 100;
-   return target;
-}
-
-// Convert days to whatever period we are using
-int NormalizeDays(int days, ENUM_TIMEFRAMES period)
-{
-   int answer = (days * 24 * 3600) / PeriodSeconds(period);
-   return(answer);
-}
-void ExportMA(
-      double& buffer[],
-      int start = 0,
-      int end = NULL,
-      string symbol = NULL,
-      ENUM_TIMEFRAMES period = 0,
-      int ma_period = 12,
-      ENUM_MA_METHOD ma_method = MODE_EMA,
-      ENUM_APPLIED_PRICE applied_price = PRICE_CLOSE
-      ) 
-{
-   int buffer_number = 0;
-   SetIndexBuffer(buffer_number,buffer,INDICATOR_DATA);
-   int ma_handle=iMA(symbol,period,ma_period,0,ma_method,applied_price);
-   if (end == NULL) {
-      end=Bars(symbol,period);
-   }
-   
-   CopyBuffer(ma_handle,buffer_number,start,end,buffer);
-   
-   // This function reverse the buffer array so that newest are displayed first
-   ArraySetAsSeries(buffer,true);
-   
-}
-  
-void ExportATR(
-      double& buffer[],
-      int start = 0,
-      int end = NULL,
-      string symbol = NULL,
-      ENUM_TIMEFRAMES period = 0,
-      int ma_period = 12
-      ) 
-{
-   int buffer_number = 0;
-   SetIndexBuffer(buffer_number,buffer,INDICATOR_DATA);
-   int handle=iATR(symbol,period,ma_period);
-   if (end == NULL) {
-      end=Bars(symbol,period);
-   }
-   
-   CopyBuffer(handle,buffer_number,start,end,buffer);
-   
-   // This function reverse the buffer array so that newest are displayed first
-   ArraySetAsSeries(buffer,true);
-   
-}
-  
-void ExportADX(
-      double& buffer[],
-      int start = 0,
-      int end = NULL,
-      string symbol = NULL,
-      ENUM_TIMEFRAMES period = 0,
-      int adx_period = 12
-      ) 
-{
-   int buffer_number = 0;
-   SetIndexBuffer(buffer_number,buffer,INDICATOR_DATA);
-   int handle=iADX(symbol,period,adx_period);
-   if (end == NULL) {
-      end=Bars(symbol,period);
-   }
-   
-   CopyBuffer(handle,buffer_number,start,end,buffer);
-   
-   // This function reverse the buffer array so that newest are displayed first
-   ArraySetAsSeries(buffer,true);
-   
-}
-
-void ExportStoch(
-      double& buffer[],
-      int start = 0,
-      int end = NULL,
-      string symbol = NULL,
-      ENUM_TIMEFRAMES period = 0,
-      int Kperiod = 3,
-      ENUM_MA_METHOD ma_method = MODE_EMA,
-      ENUM_STO_PRICE applied_price = STO_LOWHIGH
-      ) 
-{
-   int buffer_number = 0;
-   SetIndexBuffer(buffer_number,buffer,INDICATOR_DATA);
-   int handle=iStochastic(symbol,period,Kperiod, 3,3, ma_method, applied_price);
-   if (end == NULL) {
-      end=Bars(symbol,period);
-   }
-   
-   CopyBuffer(handle,buffer_number,start,end,buffer);
-   
-   // This function reverse the buffer array so that newest are displayed first
-   ArraySetAsSeries(buffer,true);
-   
-}
-
-void ExportRSI(
-      double& buffer[],
-      int start = 0,
-      int end = NULL,
-      string symbol = NULL,
-      ENUM_TIMEFRAMES period = 0,
-      int ma_period = 12,
-      ENUM_APPLIED_PRICE applied_price = PRICE_CLOSE
-      ) 
-{
-   int buffer_number = 0;
-   SetIndexBuffer(buffer_number,buffer,INDICATOR_DATA);
-   int handle=iRSI(symbol,period,ma_period,applied_price);
-   if (end == NULL) {
-      end=Bars(symbol,period);
-   }
-   
-   CopyBuffer(handle,buffer_number,start,end,buffer);
-   
-   // This function reverse the buffer array so that newest are displayed first
-   ArraySetAsSeries(buffer,true);
-   
-}
-
-void ExportMACD(
-      double& buffer[],
-      int start = 0,
-      int end = NULL,
-      string symbol = NULL,
-      ENUM_TIMEFRAMES period = 0,
-      int fast_ema_period = 12,
-      int slow_ema_period = 26,
-      int signal_period = 9,
-      ENUM_APPLIED_PRICE applied_price = PRICE_CLOSE
-      ) 
-{
-   int buffer_number = 0;
-   SetIndexBuffer(buffer_number,buffer,INDICATOR_DATA);
-   int handle=iMACD(symbol,period,fast_ema_period, slow_ema_period, signal_period, applied_price);
-   if (end == NULL) {
-      end=Bars(symbol,period);
-   }
-   
-   CopyBuffer(handle,buffer_number,start,end,buffer);
-   
-   // This function reverse the buffer array so that newest are displayed first
-   ArraySetAsSeries(buffer,true);
-   
 }
 //+------------------------------------------------------------------+

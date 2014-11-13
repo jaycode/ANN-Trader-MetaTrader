@@ -12,17 +12,19 @@
 #include "../../Includes/Exporters.mqh"
 
 #import "FPDLL.dll"
-   bool Learn(int size, double &X[][15], double &bid[], double &ask[], datetime &time[]);
-//   bool Learn(int size, double &X[][15]);
+   bool Memorize(int size, double &X[][], datetime &time[]);
    bool Predict(datetime time, double ask, double &positions[], double budget, bool& signal, double& take_profit, double& stop_loss, double& volume);
    void GetLog(string &logStr);
 #import
 
 input int       Export_Bars = 5; // Number of bars exported for learning.
 input ENUM_TIMEFRAMES Export_Period  = PERIOD_D1; // Period between each two learning bars.
+input int       Export_NextTickToGuess = 5; // Tick at this position after the last sample will be guessed by our robot.
+
 // Use this to make sure prediction is done once daily. Stored in:
 // C:\Users\Username\AppData\Roaming\MetaQuotes\Terminal\Common\Files\ dir
 input string lastTickFile = "ForexPredictor\\lastTickTime.txt";
+
 input string logFile = "ForexPredictor\\app.log";
 
 int loghandle;
@@ -111,25 +113,62 @@ void OnTick() {
       ExportRSI(rsi15, 0, Export_Bars, Symbol(), Export_Period, NormalizeDays(3, Export_Period), PRICE_CLOSE);
       ExportMACD(macd,0, Export_Bars, Symbol(), Export_Period, NormalizeDays(12, Export_Period), NormalizeDays(26, Export_Period), NormalizeDays(9, Export_Period), PRICE_CLOSE);
       
-      double X[][15];
+      double X[][];
       ArrayResize(X, Export_Bars);
+      double Y[][];
+      ArrayResize(Y, Export_Bars);
+      
       // Learn using all data above.
+      string x_fields[] = [
+         'time',
+         'ema3ema30',
+         'ema15ema60',
+         'hpr200',
+         'lpr200',
+         'sma3sma15',
+         'atr3atr15',
+         'adx3',
+         'adx15',
+         'stochk3',
+         'stochk15',
+         'rsi3',
+         'rsi15',
+         'macd'
+      ];
+      string row_y = "signal, bids, asks, " +
+      "maxclose"+(Export_NextTickToGuess* PeriodSeconds(Export_Period)/3600)+"h, target, time";
+      string y_fields[] = [
+         'signal',
+         'bids',
+         'asks',
+         'maxclose' + (Export_NextTickToGuess* PeriodSeconds(Export_Period)/3600)+'h',
+         'target',
+         'time'
+      ]
+      
       for(int i=0; i<Export_Bars; i++){
-         X[i][0] = ema3[i];
-         X[i][1] = ema30[i];
-         X[i][2] = ema15[i];
-         X[i][3] = ema60[i];
-         X[i][4] = sma3[i];
-         X[i][5] = sma15[i];
-         X[i][6] = atr3[i];
-         X[i][7] = atr15[i];
-         X[i][8] = adx3[i];
-         X[i][9] = adx15[i];
-         X[i][10] = stoch3[i];
-         X[i][11] = stoch15[i];
-         X[i][12] = rsi3[i];
-         X[i][13] = rsi15[i];
-         X[i][14] = macd[i];
+      
+         double highest_close = 0;
+         double lowest_close = 99999;
+         for (int j = i; j < i+200; j++) {
+            if (rates[j].close > highest_close) highest_close = rates[j].close;
+            if (rates[j].close < lowest_close) lowest_close = rates[j].close;
+         }
+         X[i][0] = rates[i].time;
+         X[i][1] = ema3[i]/ema30[i];
+         X[i][2] = ema15[i]/ema60[i];
+         X[i][3] = rates[i].close/highest_close;
+         X[i][4] = lowest_close/rates[i].close;
+         X[i][5] = sma3[i]/sma15[i];
+         X[i][6] = atr3[i]/atr15[i];
+         X[i][7] = adx3[i];
+         X[i][8] = adx15[i];
+         X[i][9] = stoch3[i];
+         X[i][10] = stoch15[i];
+         X[i][11] = rsi3[i];
+         X[i][12] = rsi15[i];
+         X[i][13] = macd[i];
+         Y[i][1] = 
       }
       
       double bids[];
@@ -145,11 +184,19 @@ void OnTick() {
          times[i] = rates[i].time;
       }
       
-      Learn(Export_Bars, X, bids, asks, times);
       
+      // Learn(Export_Bars, X, bids, asks, times);
+      Memorize('x_'+Export_Period, x_fields, Export_Bars, X, times);
       string logStr = "";
       GetLog(logStr);
       Log(logStr);
+      
+      Memorize('y_'+Export_Period, y_fields, Export_Bars, Y, times);
+      logStr = "";
+      GetLog(logStr);
+      Log(logStr);
+      
+      Learn(Export_Period);
    }
    LogFlush();
 }
