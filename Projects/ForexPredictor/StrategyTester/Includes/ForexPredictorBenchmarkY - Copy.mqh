@@ -8,7 +8,7 @@
 #property description "Test if exported Y is profitable by using it in Expert Advisor"
 #property version   "1.00"
 
-#property tester_file "ForexPredictor\\predictions.csv"
+#property tester_file "ForexPredictor\\training_y.csv"
 
 //+------------------------------------------------------------------+
 //|                                                                  |
