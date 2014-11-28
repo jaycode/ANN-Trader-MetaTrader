@@ -6,17 +6,14 @@
 #property copyright "Jay"
 #property link      "http://www.teguhwijaya.com"
 #property version   "1.00"
-
-input double swap = 0.2;
-input double upper_threshold = 0.2;
-input double lower_threshold = 10;
+#property description "Applying predictions set up by Matlab."
 
 //+------------------------------------------------------------------+
 //| Include                                                          |
 //+------------------------------------------------------------------+
-#include "..\Includes\ForexPredictorBenchmarkY.mqh"
+#include "..\Includes\PredictionsApplier.mqh"
 
-ForexPredictorBenchmarkY fp_ea();
+PredictionsApplier fp_ea();
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
@@ -24,7 +21,8 @@ ForexPredictorBenchmarkY fp_ea();
 int OnInit()
   {
 //---
-   fp_ea.Init(swap, upper_threshold, lower_threshold);
+   Print("Init");
+   fp_ea.Init();
 //---
    return(INIT_SUCCEEDED);
   }

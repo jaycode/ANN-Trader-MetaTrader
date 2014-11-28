@@ -26,7 +26,26 @@
 // #import
 //+------------------------------------------------------------------+
 
-double CalculateTarget(MqlRates& rates[], int current_pos, int pos_to_guess, double& final_max_close)
+void CalculateTarget(MqlRates& rates[], int current_pos, int pos_to_guess, double& final_max_close, double& final_min_close, double& upper_target, double& lower_target)
+{
+   double max_close = 0;
+   double min_close = 999999;
+   double dbl_spread = 0;
+   for (int i = current_pos; i < current_pos+pos_to_guess+1; i++) {
+      // Print(i, " comparing ", rates[i].close, " with ", max_close);
+      if (rates[i].close > max_close) max_close = rates[i].close;
+      if (rates[i].close < min_close) min_close = rates[i].close;
+   }
+   final_max_close = max_close;
+   final_min_close = min_close;
+   
+   dbl_spread = rates[current_pos].spread * 0.00001;
+   upper_target = ((max_close - (rates[current_pos].close + dbl_spread)) / rates[current_pos].close) * 100;
+   lower_target = ((min_close - (rates[current_pos].close + dbl_spread)) / rates[current_pos].close) * 100;
+   
+}
+
+double OldCalculateTarget(MqlRates& rates[], int current_pos, int pos_to_guess, double& final_max_close)
 {
    double max_close = 0;
    double dbl_spread = 0;

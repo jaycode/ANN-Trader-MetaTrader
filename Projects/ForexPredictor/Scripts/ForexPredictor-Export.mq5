@@ -14,15 +14,17 @@
 // x = input
 // y = output
 input string    Export_FileDir      = "ForexPredictor\\"; // File for exporting (in the folder "MQL5\Files")
-input int       Export_Bars_Training = 300; // Number of lines of each y to be exported for training (number of rows exported are this times y variants).
-input int       Export_Bars_CrossValidation = 200; // Number of lines of each y to be exported for cross-validation.
-input int       Export_Bars_Testing  = 30; // Number of lines of each y to be exported for testing.
+input datetime  Training_Date_Start = D'2000.01.01'; // Start of training date minus 200 trading days.
+input datetime  Training_Date_End = D'2013.12.31'; // End of training date.
+input datetime  Testing_Date_Start = D'2014.01.01'; // Start of testing date.
 input ENUM_TIMEFRAMES Export_Period  = PERIOD_D1; // Tick Period
-input int       Export_NextTickToGuess = 5; // Tick at this position after the last sample will be guessed by our robot.
-input double    Export_OutputThreshold = 0.5; // When target is higher than this, generate buy signal (sell otherwise).
-input double    swap = 0.2; // Swap is broker's fee for keeping a trade open, calculated daily of all current trades.
+input int       Export_NextTickToGuess = 5; // Export targets after this * export period (e.g. 5 days forward).
 //+------------------------------------------------------------------+
 
+// Add this number of ticks/days to training date start, so if training date starts
+// at 2000 jan 1, use data from 2000 jan 1 + 200 trading days. This is needed for
+// hpr and lpr calculation.
+int hpr_lpr_ticks = 200; 
 
 // Our buffers
 double ema3[];
@@ -46,33 +48,27 @@ MqlRates rates[];
 void OnStart() 
   {
    
-   string training_path_x;
-   string crossvalidation_path_x;
-   string testing_path_x;
+   string training_path_inputs;
+   string testing_path_inputs;
    
-   string training_path_y;
-   string crossvalidation_path_y;
-   string testing_path_y;
+   string training_path_targets;
+   string testing_path_targets;
    
-   StringConcatenate(training_path_x, Export_FileDir, "training_x.csv");
-   StringConcatenate(crossvalidation_path_x, Export_FileDir, "cross-validation_x.csv");
-   StringConcatenate(testing_path_x, Export_FileDir, "testing_x.csv");
+   StringConcatenate(training_path_inputs, Export_FileDir, "training_inputs.csv");
+   StringConcatenate(testing_path_inputs, Export_FileDir, "testing_inputs.csv");
 
-   StringConcatenate(training_path_y, Export_FileDir, "training_y.csv");
-   StringConcatenate(crossvalidation_path_y, Export_FileDir, "cross-validation_y.csv");
-   StringConcatenate(testing_path_y, Export_FileDir, "testing_y.csv");
+   StringConcatenate(training_path_targets, Export_FileDir, "training_targets.csv");
+   StringConcatenate(testing_path_targets, Export_FileDir, "testing_targets.csv");
 
    // Create the files
-   int file_training_x = FileOpen(training_path_x, FILE_WRITE|FILE_CSV|FILE_ANSI, ',');
-   int file_crossvalidation_x = FileOpen(crossvalidation_path_x, FILE_WRITE|FILE_CSV|FILE_ANSI, ',');
-   int file_testing_x = FileOpen(testing_path_x, FILE_WRITE|FILE_CSV|FILE_ANSI, ',');
+   int file_training_inputs = FileOpen(training_path_inputs, FILE_WRITE|FILE_CSV|FILE_ANSI, ',');
+   int file_testing_inputs = FileOpen(testing_path_inputs, FILE_WRITE|FILE_CSV|FILE_ANSI, ',');
    
-   int file_training_y = FileOpen(training_path_y, FILE_WRITE|FILE_CSV|FILE_ANSI, ',');
-   int file_crossvalidation_y = FileOpen(crossvalidation_path_y, FILE_WRITE|FILE_CSV|FILE_ANSI, ',');
-   int file_testing_y = FileOpen(testing_path_y, FILE_WRITE|FILE_CSV|FILE_ANSI, ',');
+   int file_training_targets = FileOpen(training_path_targets, FILE_WRITE|FILE_CSV|FILE_ANSI, ',');
+   int file_testing_targets = FileOpen(testing_path_targets, FILE_WRITE|FILE_CSV|FILE_ANSI, ',');
    
-   if (file_training_x != INVALID_HANDLE && file_crossvalidation_x != INVALID_HANDLE && file_testing_x != INVALID_HANDLE &&
-       file_training_y != INVALID_HANDLE && file_crossvalidation_y != INVALID_HANDLE && file_testing_y != INVALID_HANDLE)
+   if (file_training_inputs != INVALID_HANDLE && file_testing_inputs != INVALID_HANDLE &&
+       file_training_targets != INVALID_HANDLE && file_testing_targets != INVALID_HANDLE)
      {
       // Write the heading of data
       
@@ -80,33 +76,30 @@ void OnStart()
       // hpr200 = Close/Highest Close 200
       // Lowest Price Ratio
       // lpr200 = Lowest Close 200 / Close
+      // mom = Momentum indicator
       string row="time, ema3ema30, ema15ema60, " +
       "hpr200, lpr200, " + 
-      "sma3sma15, atr3atr15, " + 
-      "adx3, adx15, stochk3, stochk15, rsi3, rsi15, macd";
-      FileWrite(file_training_x, row);
-      FileWrite(file_crossvalidation_x, row);
-      FileWrite(file_testing_x, row);
+      "sma3sma15, volsma3sma15, atr3atr15, " + 
+      "adx3, adx15, stochk3, stochk15, stochk3stochk15, " + 
+      "mom3, mom15, mom3mom15, " +
+      "rsi3, rsi15, rsi3rsi15, macd";
+      FileWrite(file_training_inputs, row);
+      FileWrite(file_testing_inputs, row);
       
-      // Bid - we sell price
-      // Ask - we buy price
-      string row_y = "time, signal, bids, asks, " +
-      "maxclose"+(Export_NextTickToGuess* PeriodSeconds(Export_Period)/3600)+"h, target";
-      FileWrite(file_training_y, row_y);
-      FileWrite(file_crossvalidation_y, row_y);
-      FileWrite(file_testing_y, row_y);
-      
-      // Go through history and get a number of trades used in training, cross validation, and testing.
-      int count = Export_Bars_CrossValidation + Export_Bars_Training + Export_Bars_Testing;
+      // Bid - dealer bid, we sell price
+      // Ask - dealer ask, we buy price
+      // Upper target - Highest strength in predicted days.
+      // Lower target - Lowest strength in predicted days.
+      string row_targets = "time, bids, asks, " +
+      "maxclose, " +
+      "minclose, uppertarget, lowertarget";
+      FileWrite(file_training_targets, row_targets);
+      FileWrite(file_testing_targets, row_targets);
 
-      int all_bars = Bars(Symbol(),Export_Period);
-      if (CopyRates(Symbol(), Export_Period, 1, all_bars, rates) < count)
-        {
-         Print("Error! Not enough history for data export.");
-         return;
-        }
-      // True because we want newest data first
-      ArraySetAsSeries(rates, true);
+      CopyRates(Symbol(), Export_Period, TimeCurrent(), Training_Date_Start, rates);
+      int all_bars = ArraySize(rates);
+      // False because we want oldest data first
+      ArraySetAsSeries(rates, false);
       
       
       ExportMA(ema3, 0, all_bars, Symbol(), Export_Period, NormalizeDays(3, Export_Period), MODE_EMA, PRICE_CLOSE);
@@ -125,97 +118,65 @@ void OnStart()
       ExportRSI(rsi15, 0, all_bars, Symbol(), Export_Period, NormalizeDays(3, Export_Period), PRICE_CLOSE);
       ExportMACD(macd,0, all_bars, Symbol(), Export_Period, NormalizeDays(12, Export_Period), NormalizeDays(26, Export_Period), NormalizeDays(9, Export_Period), PRICE_CLOSE);
       
-      int counter = 0;
-      int count_y_buy = 0;
-      int count_y_sell = 0;
-      
-      // for (int bar=0; bar<count-Export_SampleTicks-Export_NextTickToGuess; bar++)
-      int bar = Export_NextTickToGuess-1;
-      while (counter < count*2 && bar < all_bars)
+      int bar = hpr_lpr_ticks+1;
+      while (bar < all_bars - Export_NextTickToGuess)
       {
-         bool write = false;
-         // Checks if target is larger or within or less than threshold.
-         double max_close;
-         double target = CalculateTarget(rates, bar, Export_NextTickToGuess, max_close);
-         // When there are space left within an x (and y) set, add a new line into it.
-         if (target > Export_OutputThreshold && count_y_buy < count) {
-            count_y_buy++;
-            counter++;
-            write = true;
-            row_y = (long)rates[bar].time + ", 1, "+(rates[bar].close)+", "+(rates[bar].close+rates[bar].spread*0.00001)+", "+max_close+", "+target;
-            row = SetupX(bar);
-            if (count_y_buy < Export_Bars_CrossValidation) {
-               FileWrite(file_crossvalidation_x, row);
-               FileWrite(file_crossvalidation_y, row_y);
-            }
-            else if (count_y_buy < (Export_Bars_CrossValidation + Export_Bars_Training)) {
-               FileWrite(file_training_x, row);
-               FileWrite(file_training_y, row_y);
-            }
-            else if (count_y_buy < (Export_Bars_CrossValidation + Export_Bars_Training + Export_Bars_Testing)) {
-               FileWrite(file_testing_x, row);
-               FileWrite(file_testing_y, row_y);
-            }
+         double max_close, min_close;
+         double upper_target, lower_target;
+         CalculateTarget(rates, bar, Export_NextTickToGuess, max_close, min_close, upper_target, lower_target);
+         row_targets = (long)rates[bar].time + ", "+(rates[bar].close)+", "+(rates[bar].close+rates[bar].spread*0.00001)+", "+max_close+", "+min_close+", "+upper_target+", "+lower_target;
+         row = SetupX(bar);
+         if (rates[bar].time <= Training_Date_End) {
+            FileWrite(file_training_inputs, row);
+            FileWrite(file_training_targets, row_targets);
          }
-         else if (target <= Export_OutputThreshold && count_y_sell < count) {
-            count_y_sell++;
-            counter++;
-            write = true;
-            
-            row_y = (long)rates[bar].time + ", 0, "+(rates[bar].close)+", "+(rates[bar].close+rates[bar].spread*0.00001)+", "+max_close+", "+target;
-            row = SetupX(bar);
-            if (count_y_sell < Export_Bars_CrossValidation) {
-               FileWrite(file_crossvalidation_x, row);
-               FileWrite(file_crossvalidation_y, row_y);
-            }
-            else if (count_y_sell < (Export_Bars_CrossValidation + Export_Bars_Training)) {
-               FileWrite(file_training_x, row);
-               FileWrite(file_training_y, row_y);
-            }
-            else if (count_y_sell < (Export_Bars_CrossValidation + Export_Bars_Training + Export_Bars_Testing)) {
-               FileWrite(file_testing_x, row);
-               FileWrite(file_testing_y, row_y);
-            }
+         else {
+            FileWrite(file_testing_inputs, row);
+            FileWrite(file_testing_targets, row_targets);
          }
-         
          bar++;
       }
-      if (bar == all_bars) {
-         Print("Export failed. Please use smaller number for Export Threshold.");
-      }
-      FileClose(file_training_x);
-      FileClose(file_crossvalidation_x);
-      FileClose(file_testing_x);
-      FileClose(file_training_y);
-      FileClose(file_crossvalidation_y);
-      FileClose(file_testing_y);
+      Print("Exported ", all_bars, " rates");
+      Print("Export_NextTickToGuess: ", Export_NextTickToGuess);
+      FileClose(file_training_inputs);
+      FileClose(file_testing_inputs);
+      FileClose(file_training_targets);
+      FileClose(file_testing_targets);
       Print("Export of data finished successfully.");
      }
    else Print("Error! Failed to create the file for data export. ", GetLastError());
   }
 
-string SetupX(int bar)
+string SetupX(int current_pos)
 {
    double highest_close = 0;
    double lowest_close = 99999;
-   for (int i = bar; i < bar+200; i++) {
+   /*
+   for (int i = current_pos; i < current_pos+Export_NextTickToGuess-1; i++) {
       if (rates[i].close > highest_close) highest_close = rates[i].close;
       if (rates[i].close < lowest_close) lowest_close = rates[i].close;
    }
+   */
+   for (int i = current_pos - hpr_lpr_ticks; i < current_pos; i++) {
+      if (rates[i].close > highest_close) highest_close = rates[i].close;
+      if (rates[i].close < lowest_close) lowest_close = rates[i].close;
+   }
+
    
-   return (long)rates[bar].time + ", " + (ema3[bar]/ema30[bar])+", "
-         +(ema15[bar]/ema60[bar])+", "
-         +(rates[bar].close/highest_close)+", "
-         +(lowest_close/rates[bar].close)+", "
-         +(sma3[bar]/sma15[bar])+", "
-         +(atr3[bar]/atr15[bar])+", "
-         +(adx3[bar])+", "
-         +(adx15[bar])+", "
-         +(stoch3[bar])+", "
-         +(stoch15[bar])+", "
-         +(rsi3[bar])+", "
-         +(rsi15[bar])+", "
-         +(macd[bar])
+   return (long)rates[current_pos].time + ", " + (ema3[current_pos]/ema30[current_pos])+", "
+         +(ema15[current_pos]/ema60[current_pos])+", "
+         +(rates[current_pos].close/highest_close)+", "
+         +(lowest_close/rates[current_pos].close)+", "
+         +(sma3[current_pos]/sma15[current_pos])+", "
+         +(atr3[current_pos]/atr15[current_pos])+", "
+         +(adx3[current_pos])+", "
+         +(adx15[current_pos])+", "
+         +(stoch3[current_pos])+", "
+         +(stoch15[current_pos])+", "
+         +(stoch3[current_pos]/stoch15[current_pos])+", "
+         +(rsi3[current_pos])+", "
+         +(rsi15[current_pos])+", "
+         +(macd[current_pos])
          ;
 }
 //+------------------------------------------------------------------+
