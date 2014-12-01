@@ -24,7 +24,7 @@ input int       Export_NextTickToGuess = 5; // Export targets after this * expor
 // Add this number of ticks/days to training date start, so if training date starts
 // at 2000 jan 1, use data from 2000 jan 1 + 200 trading days. This is needed for
 // hpr and lpr calculation.
-int hpr_lpr_ticks = 200; 
+int hpr_lpr_bars = 200; 
 
 // Our buffers
 double ema3[];
@@ -33,12 +33,16 @@ double ema15[];
 double ema60[];
 double sma3[];
 double sma15[];
+double vma3[];
+double vma15[];
 double atr3[];
 double atr15[];
 double adx3[];
 double adx15[];
 double stoch3[];
 double stoch15[];
+double mom3[];
+double mom15[];
 double rsi3[];
 double rsi15[];
 double macd[];
@@ -79,7 +83,7 @@ void OnStart()
       // mom = Momentum indicator
       string row="time, ema3ema30, ema15ema60, " +
       "hpr200, lpr200, " + 
-      "sma3sma15, volsma3sma15, atr3atr15, " + 
+      "sma3sma15, vma3vma15, atr3atr15, " + 
       "adx3, adx15, stochk3, stochk15, stochk3stochk15, " + 
       "mom3, mom15, mom3mom15, " +
       "rsi3, rsi15, rsi3rsi15, macd";
@@ -101,24 +105,27 @@ void OnStart()
       // False because we want oldest data first
       ArraySetAsSeries(rates, false);
       
-      
       ExportMA(ema3, 0, all_bars, Symbol(), Export_Period, NormalizeDays(3, Export_Period), MODE_EMA, PRICE_CLOSE);
       ExportMA(ema30, 0, all_bars, Symbol(), Export_Period, NormalizeDays(15, Export_Period), MODE_EMA, PRICE_CLOSE);
       ExportMA(ema15, 0, all_bars, Symbol(), Export_Period, NormalizeDays(3, Export_Period), MODE_EMA, PRICE_CLOSE);
       ExportMA(ema60, 0, all_bars, Symbol(), Export_Period, NormalizeDays(15, Export_Period), MODE_EMA, PRICE_CLOSE);
       ExportMA(sma3, 0, all_bars, Symbol(), Export_Period, NormalizeDays(3, Export_Period), MODE_SMA, PRICE_CLOSE);
       ExportMA(sma15, 0, all_bars, Symbol(), Export_Period, NormalizeDays(15, Export_Period), MODE_SMA, PRICE_CLOSE);
+      ExportVMA(vma3, rates, 3);
+      ExportVMA(vma15, rates, 15);
       ExportATR(atr3, 0, all_bars, Symbol(), Export_Period, NormalizeDays(3, Export_Period));
       ExportATR(atr15, 0, all_bars, Symbol(), Export_Period, NormalizeDays(15, Export_Period));
       ExportADX(adx3, 0, all_bars, Symbol(), Export_Period, NormalizeDays(3, Export_Period));
       ExportADX(adx15, 0, all_bars, Symbol(), Export_Period, NormalizeDays(3, Export_Period));
       ExportStoch(stoch3, 0, all_bars, Symbol(), Export_Period, NormalizeDays(3, Export_Period), MODE_SMA, STO_LOWHIGH);
       ExportStoch(stoch15, 0, all_bars, Symbol(), Export_Period, NormalizeDays(15, Export_Period), MODE_SMA, STO_LOWHIGH);
+      ExportMOM(mom3, 0, all_bars, Symbol(), Export_Period, 3, PRICE_CLOSE);
+      ExportMOM(mom15, 0, all_bars, Symbol(), Export_Period, 15, PRICE_CLOSE);
       ExportRSI(rsi3, 0, all_bars, Symbol(), Export_Period, NormalizeDays(3, Export_Period), PRICE_CLOSE);
       ExportRSI(rsi15, 0, all_bars, Symbol(), Export_Period, NormalizeDays(3, Export_Period), PRICE_CLOSE);
       ExportMACD(macd,0, all_bars, Symbol(), Export_Period, NormalizeDays(12, Export_Period), NormalizeDays(26, Export_Period), NormalizeDays(9, Export_Period), PRICE_CLOSE);
       
-      int bar = hpr_lpr_ticks+1;
+      int bar = hpr_lpr_bars+1;
       while (bar < all_bars - Export_NextTickToGuess)
       {
          double max_close, min_close;
@@ -142,6 +149,15 @@ void OnStart()
       FileClose(file_testing_inputs);
       FileClose(file_training_targets);
       FileClose(file_testing_targets);
+      
+      // Settings
+      string settings_path;
+      StringConcatenate(settings_path, Export_FileDir, "input_settings.csv");
+      int file_settings = FileOpen(settings_path, FILE_WRITE|FILE_ANSI);
+      string settings = "Export_Period," + Export_Period + "\n" +
+                        "Export_NextTickToGuess," + Export_NextTickToGuess + "\n";
+      FileWrite(file_settings, settings);
+      FileClose(file_settings);
       Print("Export of data finished successfully.");
      }
    else Print("Error! Failed to create the file for data export. ", GetLastError());
@@ -157,25 +173,38 @@ string SetupX(int current_pos)
       if (rates[i].close < lowest_close) lowest_close = rates[i].close;
    }
    */
-   for (int i = current_pos - hpr_lpr_ticks; i < current_pos; i++) {
+   for (int i = current_pos - hpr_lpr_bars; i < current_pos; i++) {
       if (rates[i].close > highest_close) highest_close = rates[i].close;
       if (rates[i].close < lowest_close) lowest_close = rates[i].close;
    }
 
    
-   return (long)rates[current_pos].time + ", " + (ema3[current_pos]/ema30[current_pos])+", "
+   string row="time, ema3ema30, ema15ema60, " +
+      "hpr200, lpr200, " + 
+      "sma3sma15, vma3vma15, atr3atr15, " + 
+      "adx3, adx15, stochk3, stochk15, stochk3stochk15, " + 
+      "mom3, mom15, mom3mom15, " +
+      "rsi3, rsi15, rsi3rsi15, macd";
+      
+   return (long)rates[current_pos].time + ", "
+         +(ema3[current_pos]/ema30[current_pos])+", "
          +(ema15[current_pos]/ema60[current_pos])+", "
          +(rates[current_pos].close/highest_close)+", "
          +(lowest_close/rates[current_pos].close)+", "
          +(sma3[current_pos]/sma15[current_pos])+", "
+         +(vma3[current_pos]/vma15[current_pos])+", "
          +(atr3[current_pos]/atr15[current_pos])+", "
          +(adx3[current_pos])+", "
          +(adx15[current_pos])+", "
          +(stoch3[current_pos])+", "
          +(stoch15[current_pos])+", "
          +(stoch3[current_pos]/stoch15[current_pos])+", "
+         +(mom3[current_pos])+", "
+         +(mom15[current_pos])+", "
+         +(mom3[current_pos]/mom15[current_pos])+", "
          +(rsi3[current_pos])+", "
          +(rsi15[current_pos])+", "
+         +(rsi3[current_pos]/rsi15[current_pos])+", "
          +(macd[current_pos])
          ;
 }

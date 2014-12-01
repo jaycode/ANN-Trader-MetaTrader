@@ -11,9 +11,9 @@
 //+------------------------------------------------------------------+
 //| Include                                                          |
 //+------------------------------------------------------------------+
-#include "..\Includes\PredictionsApplier.mqh"
+#include "..\Includes\PredictionsApplier3Labels.mqh"
 
-PredictionsApplier fp_ea();
+PredictionsApplier3Labels fp_ea();
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |

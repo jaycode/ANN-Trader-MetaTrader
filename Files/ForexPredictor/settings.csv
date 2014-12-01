@@ -1,2 +1,4 @@
-upper_threshold,1
+upper_threshold,0.5
 lower_threshold,-1
+Export_Period,16408
+Export_NextTickToGuess,5

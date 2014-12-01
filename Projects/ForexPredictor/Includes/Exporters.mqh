@@ -5,6 +5,8 @@
 //+------------------------------------------------------------------+
 #property copyright "Jay"
 #property link      "http://www.teguhwijaya.com"
+
+#include <MovingAverages.mqh>
 //+------------------------------------------------------------------+
 //| defines                                                          |
 //+------------------------------------------------------------------+
@@ -66,6 +68,22 @@ int NormalizeDays(int days, ENUM_TIMEFRAMES period)
    return(answer);
 }
 
+void ExportVMA(
+      double& buffer[],
+      const MqlRates& rates[],
+      int ma_period = 3
+      )
+{
+   double dblvolume[];
+   ArrayResize(dblvolume, ArraySize(rates));
+   ArrayResize(buffer, ArraySize(dblvolume));
+   for(int i=0;i<ArraySize(dblvolume);i++)
+   {
+      dblvolume[i] = (double)rates[i].tick_volume;
+   }
+   SimpleMAOnBuffer(ArraySize(dblvolume), 0, 0, ma_period, dblvolume, buffer);
+}
+
 void ExportMA(
       double& buffer[],
       int start = 0,
@@ -85,6 +103,30 @@ void ExportMA(
    }
    
    CopyBuffer(ma_handle,buffer_number,start,end,buffer);
+   
+   // This function reverse the buffer array so that newest are displayed first
+   ArraySetAsSeries(buffer,true);
+   
+}
+
+void ExportMOM(
+      double& buffer[],
+      int start = 0,
+      int end = NULL,
+      string symbol = NULL,
+      ENUM_TIMEFRAMES period = 0,
+      int mom_period = 12,
+      ENUM_APPLIED_PRICE applied_price = PRICE_CLOSE
+      ) 
+{
+   int buffer_number = 0;
+   SetIndexBuffer(buffer_number,buffer,INDICATOR_DATA);
+   int mom_handle=iMomentum(symbol,period,mom_period,applied_price);
+   if (end == NULL) {
+      end=Bars(symbol,period);
+   }
+   
+   CopyBuffer(mom_handle,buffer_number,start,end,buffer);
    
    // This function reverse the buffer array so that newest are displayed first
    ArraySetAsSeries(buffer,true);
